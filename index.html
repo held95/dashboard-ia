@@ -3,62 +3,42 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dashboard Logs - IA</title>
+<title>Dashboard Logs - IA Completo</title>
 <style>
-body {
-  font-family: Arial, sans-serif;
-  padding: 30px;
-  background-color: #f9f9f9;
-}
-h1 { color: #333; text-align:center; margin-bottom:20px;}
-input[type="file"] {
-  margin-bottom: 20px;
-}
-button {
-  padding: 10px 20px;
-  font-size: 16px;
-  background-color: #0070f3;
-  color: #fff;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-}
-button:hover { background-color: #0055c7; }
-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 20px;
-}
-th, td {
-  border: 1px solid #ccc;
-  padding: 8px;
-  text-align: left;
-}
-th {
-  background-color: #0070f3;
-  color: #fff;
-}
-#resultado { margin-top:20px; padding:10px; background:#fff; border-radius:5px; }
+body { font-family: Arial, sans-serif; background:#f5f5f5; padding:20px; }
+h1 { text-align:center; color:#333; margin-bottom:20px; }
+input, button { padding:10px; margin:5px 0; }
+button { background:#0070f3; color:#fff; border:none; border-radius:5px; cursor:pointer; }
+button:hover { background:#0055c7; }
+table { width:100%; border-collapse:collapse; margin-top:20px; }
+th, td { border:1px solid #ccc; padding:8px; text-align:left; }
+th { background:#0070f3; color:#fff; }
+#preview, #graficos, #resultado { margin-top:20px; background:#fff; padding:10px; border-radius:5px; }
+canvas { max-width:100%; height:auto; margin-top:20px; }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
-<h1>Dashboard Logs - IA</h1>
+<h1>Dashboard Logs - IA Completo</h1>
 
 <input type="file" id="fileInput" accept=".txt">
 <button id="processar">Processar Log</button>
 
 <div id="preview"></div>
+<div id="graficos"></div>
 <div id="resultado"></div>
 
 <script>
 const fileInput = document.getElementById("fileInput");
 const processarBtn = document.getElementById("processar");
 const previewDiv = document.getElementById("preview");
+const graficosDiv = document.getElementById("graficos");
 const resultadoDiv = document.getElementById("resultado");
 
 let jsonData = [];
 
+// Função para parse do log TXT para JSON
 function parseLogToJSON(logText) {
   const lines = logText.split(/\r?\n/).filter(l=>l.trim()!=="");
   const dataArray = [];
@@ -71,24 +51,19 @@ function parseLogToJSON(logText) {
     let data = dataRaw || "";
     let hora = horaRaw || "";
 
-    // Extrair quantidade de pacientes
     let qtdPacientesMatch = mensagem.match(/atendeu a (\d+)/);
     let qtdPacientes = qtdPacientesMatch ? parseInt(qtdPacientesMatch[1]) : "";
 
-    // Extrair data do registro
     let dataRegistroMatch = mensagem.match(/no dia (\d{2}\/\d{2}\/\d{2,4})/);
     let dataRegistro = dataRegistroMatch ? dataRegistroMatch[1] : "";
 
-    // Tipo de procedimento
     let tipoProcedimento = "";
     if(mensagem.toLowerCase().includes("cirurgia")) tipoProcedimento = "Cirurgias";
     else if(mensagem.toLowerCase().includes("visitas")) tipoProcedimento = "Visitas";
     else if(mensagem.toLowerCase().includes("ambulatorial")) tipoProcedimento = "Ambulatório";
 
-    // Status ação
     let status = mensagem.toLowerCase().includes("registro concluído") ? "Concluído" : "";
 
-    // Confirmação
     let confirmacao = (mensagem.trim()==="Sim" || mensagem.trim()==="Não") ? mensagem.trim() : "";
 
     dataArray.push({
@@ -109,53 +84,95 @@ function parseLogToJSON(logText) {
   return dataArray;
 }
 
-processarBtn.addEventListener("click", () => {
-  const file = fileInput.files[0];
-  if (!file) {
-    alert("Selecione um arquivo TXT");
-    return;
-  }
+// Função para criar tabela preview
+function gerarTabelaPreview(jsonData) {
+  let html = "<table><tr><th>Data</th><th>Hora</th><th>Mensagem</th><th>Qtd Pacientes</th><th>Data Registro</th></tr>";
+  jsonData.slice(0,5).forEach(row=>{
+    html += `<tr>
+      <td>${row.Data}</td>
+      <td>${row.Hora}</td>
+      <td>${row.Mensagem}</td>
+      <td>${row.QuantidadePacientes}</td>
+      <td>${row.DataRegistro}</td>
+    </tr>`;
+  });
+  html += "</table>";
+  previewDiv.innerHTML = html;
+}
 
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const text = e.target.result;
-    jsonData = parseLogToJSON(text);
+// Função para gerar gráficos
+function gerarGraficos(jsonData) {
+  graficosDiv.innerHTML = "<h2>Gráficos</h2>";
 
-    // Mostrar tabela preview (5 linhas)
-    let html = "<table><tr><th>Data</th><th>Hora</th><th>Mensagem</th><th>Qtd Pacientes</th><th>Data Registro</th></tr>";
-    jsonData.slice(0,5).forEach(row=>{
-      html += `<tr>
-        <td>${row.Data}</td>
-        <td>${row.Hora}</td>
-        <td>${row.Mensagem}</td>
-        <td>${row.QuantidadePacientes}</td>
-        <td>${row.DataRegistro}</td>
-      </tr>`;
-    });
-    html += "</table>";
-    previewDiv.innerHTML = html;
+  // Treemap: Qtd de pacientes por DataRegistro
+  const datas = [...new Set(jsonData.map(d => d.DataRegistro).filter(d=>d))];
+  const somaPacientes = datas.map(d=>{
+    return jsonData.filter(j=>j.DataRegistro===d).reduce((acc,v)=>acc+(v.QuantidadePacientes||0),0);
+  });
 
-    // Aqui você pode chamar suas funções de gráfico usando jsonData
-    resultadoDiv.textContent = "JSON processado. Pronto para gerar gráficos e enviar à IA.";
-  };
-  reader.readAsText(file);
-});
+  graficosDiv.innerHTML += '<canvas id="treemapChart"></canvas>';
+  new Chart(document.getElementById('treemapChart'), {
+    type: 'bar',
+    data: { labels: datas, datasets:[{label:'Pacientes por Data', data:somaPacientes, backgroundColor:'#0070f3'}]},
+    options: { responsive:true }
+  });
 
-// Exemplo de como enviar para a Mistral
+  // Random Map: quantidade de pacientes por tipo de procedimento
+  const tipos = [...new Set(jsonData.map(d=>d.TipoProcedimento).filter(t=>t))];
+  const somaPorTipo = tipos.map(t=>jsonData.filter(j=>j.TipoProcedimento===t).reduce((acc,v)=>acc+(v.QuantidadePacientes||0),0));
+
+  graficosDiv.innerHTML += '<canvas id="randomMapChart"></canvas>';
+  new Chart(document.getElementById('randomMapChart'), {
+    type:'pie',
+    data:{labels:tipos,datasets:[{data:somaPorTipo, backgroundColor:['#0070f3','#00c775','#f3c700']}]},
+    options:{ responsive:true }
+  });
+
+  // Código de Barras: quantidade por usuário
+  const usuarios = [...new Set(jsonData.map(d=>d.Usuario).filter(u=>u))];
+  const somaPorUsuario = usuarios.map(u=>jsonData.filter(j=>j.Usuario===u).reduce((acc,v)=>acc+(v.QuantidadePacientes||0),0));
+
+  graficosDiv.innerHTML += '<canvas id="barraChart"></canvas>';
+  new Chart(document.getElementById('barraChart'), {
+    type:'bar',
+    data:{ labels:usuarios, datasets:[{label:'Pacientes por Usuário', data:somaPorUsuario, backgroundColor:'#f35c00'}]},
+    options:{ responsive:true }
+  });
+
+  // Linear Regression Placeholder: média de pacientes por dia
+  const mediaPacientes = somaPacientes.length ? (somaPacientes.reduce((a,b)=>a+b,0)/somaPacientes.length).toFixed(2) : 0;
+  graficosDiv.innerHTML += `<p>Média de pacientes por dia (Linear Regression estimativa): ${mediaPacientes}</p>`;
+}
+
+// Função para enviar JSON para Mistral IA
 async function enviarParaIA(jsonData) {
   try {
     const resposta = await fetch("/api/gerar-insight", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
       body: JSON.stringify({ dados: JSON.stringify(jsonData) })
     });
     const json = await resposta.json();
-    console.log(json);
-    resultadoDiv.textContent = json.insights;
+    resultadoDiv.innerHTML = `<h2>Insights da IA</h2><p>${json.insights}</p>`;
   } catch(err) {
-    resultadoDiv.textContent = "Erro ao enviar para IA: " + err.message;
+    resultadoDiv.textContent = "Erro ao enviar para IA: "+err.message;
   }
 }
+
+// Botão processar
+processarBtn.addEventListener("click", () => {
+  const file = fileInput.files[0];
+  if(!file){ alert("Selecione um arquivo TXT"); return; }
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    const text = e.target.result;
+    jsonData = parseLogToJSON(text);
+    gerarTabelaPreview(jsonData);
+    gerarGraficos(jsonData);
+    enviarParaIA(jsonData);
+  };
+  reader.readAsText(file);
+});
 </script>
 
 </body>
