@@ -1,850 +1,122 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Dashboard de Atendimentos — Multi-usuários + Mistral Insights</title>
-
-<!-- estilos (mantive básico, você pode ajustar) -->
-<style>
-  body { font-family: Arial, sans-serif; background:#f4f4f9; margin:0; padding:20px; }
-  h1{ text-align:center; color:#222; }
-  .filters{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; justify-content:center; margin-bottom:12px; }
-  .filters select, .filters input, .filters button { padding:6px 8px; font-size:13px; }
-  button{ background:#007BFF; color:#fff; border:none; border-radius:4px; cursor:pointer; }
-  button.secondary{ background:#6c757d; }
-  table{ width:100%; border-collapse:collapse; background:#fff; margin-top:10px; }
-  th,td{ border:1px solid #ddd; padding:8px; text-align:center; font-size:13px; white-space:nowrap; }
-  th{ background:#007BFF; color:#fff; }
-  .no-data{ text-align:center; padding:18px; color:#666; }
-  .total-pacientes{ text-align:center; margin-top:6px; color:#333; font-weight:600; }
-  .modal-overlay{ position:fixed; inset:0; background:rgba(0,0,0,0.45); display:none; align-items:center; justify-content:center; z-index:2000; }
-  .modal-content{ background:#fff; border-radius:8px; width:95%; max-width:1000px; padding:14px; max-height:90vh; overflow:auto; position:relative; }
-  .modal-close{ position:absolute; right:10px; top:8px; background:none; border:none; font-size:20px; cursor:pointer; }
-  .graph-filters{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; justify-content:center; }
-  canvas{ width:100%; height:420px; }
-  #insightsBox{ background:#fff; padding:12px; border-radius:6px; margin-top:12px; color:#111; }
-  .small-note{ font-size:12px; color:#555; margin-top:6px; }
-  .api-controls{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-  input[type="password"], input[type="text"]{ padding:6px; border-radius:4px; border:1px solid #ccc; }
-</style>
+<meta charset="UTF-8">
+<title>Dashboard com IA (Mistral)</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 </head>
 <body>
-<h1>Dashboard de Atendimentos — Multi-usuários + Insights (Mistral)</h1>
+<h2>Comparação entre Usuários</h2>
 
-<!-- filtros e controles -->
-<div class="filters">
-  <input type="file" id="csvFile" accept=".csv" />
-  <input type="date" id="filterStartDate" />
-  <input type="date" id="filterEndDate" />
-  <select id="filterProcedure"><option value="">Todos os procedimentos</option></select>
-  <select id="filterMessageType"><option value="">Todos os tipos de mensagem</option></select>
-  <select id="filterContext"><option value="">Todos os assuntos</option></select>
+<label>Selecione usuários:</label>
+<select id="usuariosSelect" multiple>
+  <option value="Usuário A">Usuário A</option>
+  <option value="Usuário B">Usuário B</option>
+  <option value="Usuário C">Usuário C</option>
+  <option value="Usuário D">Usuário D</option>
+</select>
 
-  <!-- multi-select para usuários -->
-  <select id="filterUser" multiple size="4" title="Selecione usuários (CTRL/CMD para múltipla seleção)">
-    <!-- options são preenchidas dinamicamente -->
-  </select>
+<button onclick="atualizarGraficos()">Atualizar Gráficos</button>
+<button onclick="gerarInsightsIA()">Gerar Insights com IA</button>
 
-  <button onclick="applyFilters()">Filtrar</button>
-  <button class="secondary" onclick="resetFilters()">Resetar</button>
+<h3>Gráfico de Barras</h3>
+<canvas id="graficoBarras"></canvas>
 
-  <!-- botões de gráficos -->
-  <button onclick="openGraph('barras')">Gráfico de Barras</button>
-  <button onclick="openGraph('linear')">Linear Regression</button>
-  <button onclick="openGraph('treemap')">Treemap</button>
-  <button onclick="openGraph('randomforest')">Random Forest</button>
-</div>
+<h3>Linear Regression</h3>
+<div id="graficoLinear"></div>
 
-<div class="api-controls" style="justify-content:center; margin-bottom:10px;">
-  <!-- campo para colar a API Key (apenas teste) -->
-  <input id="mistralKey" type="password" placeholder="aXtyJ5b7gljoibshATR4PCGeYEBUseB7" style="min-width:320px;" />
-  <!-- url do proxy (recomendado) -->
-  <input id="mistralProxy" type="text" placeholder="URL do proxy (recomendado) ex: /api/mistral" style="min-width:260px;" />
-  <button onclick="generateMistralInsights()">Gerar Insights (Mistral)</button>
-  <button onclick="generateLocalInsights()" class="secondary">Insights locais (rápidos)</button>
-</div>
+<h3>Treemap</h3>
+<div id="graficoTreemap"></div>
 
-<div class="small-note" style="text-align:center;">
-  <strong>Atenção:</strong> colar a chave aqui é para testes rápidos — **não** exponha a chave em aplicações públicas. Prefira usar um proxy servidor (ex.: endpoint que contém a chave em variável de ambiente).
-</div>
+<h3>Random Forest (importância de variáveis)</h3>
+<div id="graficoRF"></div>
 
-<div class="total-pacientes" id="totalPacientes">Total de pacientes: 0</div>
-
-<table id="recordsTable">
-  <thead>
-    <tr>
-      <th>Data</th><th>Hora</th><th>Mensagem</th><th>Usuário</th><th>Tipo de Mensagem</th><th>Assunto/Contexto</th>
-      <th>Quantidade de Pacientes</th><th>Data do Registro</th><th>Tipo de Procedimento</th><th>Status da Ação</th>
-      <th>Confirmação</th><th>Número do Registro</th><th>Indicador Especial</th>
-    </tr>
-  </thead>
-  <tbody><tr><td colspan="13" class="no-data">Faça o upload de um arquivo CSV para exibir os dados</td></tr></tbody>
-</table>
-
-<!-- modal para gráficos -->
-<div class="modal-overlay" id="graphModal">
-  <div class="modal-content">
-    <button class="modal-close" onclick="closeGraph()">×</button>
-    <h2 id="graphTitle">Gráfico</h2>
-    <div class="graph-filters" id="graphFilters"></div>
-    <canvas id="graphCanvas"></canvas>
-  </div>
-</div>
-
-<!-- box de insights -->
-<div id="insightsBox" style="display:none;"></div>
-
-<!-- libs -->
-<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-treemap@1.0.0/dist/chartjs-chart-treemap.min.js"></script>
+<h3>Insights da IA</h3>
+<div id="insightsIA" style="white-space:pre-wrap; border:1px solid #ccc; padding:10px;"></div>
 
 <script>
-/* ========== Dados e utilitários ========== */
-let data = [];       // dados brutos do CSV
-let currentChart = null;
+const dataset = {
+  "Usuário A": [10, 15, 20, 25],
+  "Usuário B": [12, 18, 22, 30],
+  "Usuário C": [8, 12, 15, 19],
+  "Usuário D": [14, 20, 25, 28]
+};
 
-const COLORS = [
-  "#007BFF","#FF5733","#28A745","#FFC300","#8E44AD",
-  "#17A2B8","#E83E8C","#FD7E14","#20C997","#6C757D",
-  "#1E88E5","#D32F2F","#388E3C","#FBC02D","#7B1FA2"
-];
+let chartBarras;
 
-function updateTotal(total){
-  document.getElementById("totalPacientes").innerText = `Total de pacientes: ${total}`;
-}
-
-/* tenta parsear dd/mm/yyyy ou yyyy-mm-dd */
-function parseDate(str){
-  if(!str) return null;
-  str = String(str).trim();
-  // se formato dd/mm/yyyy
-  if(str.includes('/')){
-    const parts = str.split('/');
-    if(parts.length===3){
-      const d = Number(parts[0]), m = Number(parts[1])-1, y = Number(parts[2]);
-      if(!isNaN(d) && !isNaN(m) && !isNaN(y)) return new Date(y,m,d);
-    }
-  }
-  // tentar ISO / fallback
-  const dt = new Date(str);
-  if(!isNaN(dt)) return dt;
-  return null;
-}
-
-function getSelectedValues(selectId){
-  const sel = document.getElementById(selectId);
-  if(!sel) return [];
-  return Array.from(sel.selectedOptions).map(o=>o.value).filter(v => v !== "");
-}
-
-/* extrai usuário da mensagem (padrão "Olá NOME,") */
-function extractUserFromMessage(m){
-  if(!m) return "";
-  const match = String(m).match(/Olá\s+([^,;:\n\r]+)/i);
-  return match ? match[1].trim() : "";
-}
-
-/* normaliza preenchendo campo Usuário usando lógica LastUser (varre sequencial) */
-function normalizeUsers(arr){
-  let lastUser = "";
-  arr.forEach(r=>{
-    // respeita se já houver campo Usuário preenchido; senão tenta extrair
-    let u = r["Usuário"] ? String(r["Usuário"]).trim() : "";
-    if(!u){
-      const candidate = extractUserFromMessage(r["Mensagem"]);
-      if(candidate) u = candidate;
-    }
-    if(u) lastUser = u;
-    else u = lastUser || "";
-    r["Usuário"] = u;
-  });
-}
-
-/* ========== Tabela ========== */
-function generateTable(records){
-  const tbody = document.querySelector("#recordsTable tbody");
-  tbody.innerHTML = "";
-  if(!records || records.length===0){
-    tbody.innerHTML = '<tr><td colspan="13" class="no-data">Nenhum registro encontrado</td></tr>';
-    updateTotal(0); return;
-  }
-  let total = 0;
-  const fragment = document.createDocumentFragment();
-  let lastUser = "";
-  records.forEach(r=>{
-    const tr = document.createElement("tr");
-    let usuario = r["Usuário"] ? r["Usuário"] : extractUserFromMessage(r["Mensagem"]);
-    if(!usuario && lastUser) usuario = lastUser;
-    else if(usuario) lastUser = usuario;
-    tr.innerHTML = `<td>${r["Data"]||""}</td><td>${r["Hora"]||""}</td><td>${r["Mensagem"]||""}</td>
-      <td>${usuario||""}</td><td>${r["Tipo de Mensagem"]||""}</td><td>${r["Assunto/Contexto"]||""}</td>
-      <td>${r["Quantidade de Pacientes"]||""}</td><td>${r["Data do Registro"]||""}</td><td>${r["Tipo de Procedimento"]||""}</td>
-      <td>${r["Status da Ação"]||""}</td><td>${r["Confirmação"]||""}</td><td>${r["Número do Registro"]||""}</td><td>${r["Indicador Especial"]||""}</td>`;
-    fragment.appendChild(tr);
-    const q = Number(r["Quantidade de Pacientes"]);
-    if(!isNaN(q)) total += q;
-  });
-  tbody.appendChild(fragment);
-  updateTotal(total);
-
-  // tooltip para mensagens longas (col 3)
-  const tooltip = document.getElementById("tooltip");
-  // remover tooltip prévio
-  document.querySelectorAll("#recordsTable td:nth-child(3)").forEach(td=>{
-    td.onmousemove = (e)=>{};
-    td.onmouseleave = ()=>{};
-  });
-  // crio tooltip element (se não existe)
-  if(!tooltip){
-    const t = document.createElement("div");
-    t.id = "tooltip";
-    t.className = "tooltip";
-    document.body.appendChild(t);
-  }
-  const tip = document.getElementById("tooltip");
-  tip.style.position = "absolute"; tip.style.display = "none"; tip.style.zIndex = "9999";
-  const tds = document.querySelectorAll("#recordsTable td:nth-child(3)");
-  tds.forEach(td=>{
-    td.addEventListener("mousemove", e => {
-      tip.style.left = (e.pageX + 15) + "px";
-      tip.style.top = (e.pageY + 15) + "px";
-      tip.innerText = td.innerText;
-      tip.style.display = "block";
-      tip.style.background = "#333";
-      tip.style.color = "#fff";
-      tip.style.padding = "6px 8px";
-      tip.style.borderRadius = "6px";
-      tip.style.maxWidth = "480px";
-    });
-    td.addEventListener("mouseleave", ()=>{ tip.style.display = "none"; });
-  });
-}
-
-/* ========== Preenchimento dos filtros ========== */
-function populateFilters(){
-  const pSet = new Set(), mSet = new Set(), cSet = new Set(), uSet = new Set();
-  data.forEach(r=>{
-    if(r["Tipo de Procedimento"]) pSet.add(r["Tipo de Procedimento"]);
-    if(r["Tipo de Mensagem"]) mSet.add(r["Tipo de Mensagem"]);
-    if(r["Assunto/Contexto"]) cSet.add(r["Assunto/Contexto"]);
-    const u = r["Usuário"] ? r["Usuário"] : extractUserFromMessage(r["Mensagem"]);
-    if(u) uSet.add(u);
-  });
-
-  document.getElementById("filterProcedure").innerHTML = `<option value="">Todos os procedimentos</option>` + [...pSet].sort().map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
-  document.getElementById("filterMessageType").innerHTML = `<option value="">Todos os tipos de mensagem</option>` + [...mSet].sort().map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
-  document.getElementById("filterContext").innerHTML = `<option value="">Todos os assuntos</option>` + [...cSet].sort().map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
-
-  // filterUser é multi-select
-  const userSelect = document.getElementById("filterUser");
-  const prev = getSelectedValues("filterUser"); // tenta manter seleção atual
-  userSelect.innerHTML = '';
-  [...uSet].sort().forEach(u=>{
-    const opt = document.createElement("option");
-    opt.value = u;
-    opt.text = u;
-    if(prev.includes(u)) opt.selected = true;
-    userSelect.appendChild(opt);
-  });
-}
-
-/* escape simples para valores em option */
-function escapeHtml(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
-
-/* ========== Filtragem ========== */
-function getFilteredData(){
-  const s = document.getElementById("filterStartDate").value ? new Date(document.getElementById("filterStartDate").value) : null;
-  const e = document.getElementById("filterEndDate").value ? new Date(document.getElementById("filterEndDate").value) : null;
-  const p = document.getElementById("filterProcedure").value;
-  const m = document.getElementById("filterMessageType").value;
-  const c = document.getElementById("filterContext").value;
-  const uSelected = getSelectedValues("filterUser"); // array (vazio => todos)
-  // já normalizamos globalmente ao importar, então podemos usar r["Usuário"]
-  return data.filter(r=>{
-    const d = parseDate(r["Data do Registro"]);
-    if(!d) return false;
-    if(s && d < s) return false;
-    if(e && d > e) return false;
-    if(p && r["Tipo de Procedimento"] !== p) return false;
-    if(m && r["Tipo de Mensagem"] !== m) return false;
-    if(c && r["Assunto/Contexto"] !== c) return false;
-    if(uSelected.length > 0 && !uSelected.includes(r["Usuário"])) return false;
-    return true;
-  });
-}
-
-function applyFilters(){
-  const rows = getFilteredData();
-  generateTable(rows);
-  if(currentChart && currentChart.render) currentChart.render();
-}
-
-function resetFilters(){
-  document.getElementById("filterStartDate").value = "";
-  document.getElementById("filterEndDate").value = "";
-  document.getElementById("filterProcedure").value = "";
-  document.getElementById("filterMessageType").value = "";
-  document.getElementById("filterContext").value = "";
-  // limpa seleção de usuarios
-  const fs = document.getElementById("filterUser");
-  if(fs) Array.from(fs.options).forEach(o => o.selected = false);
-  generateTable(data);
-  if(currentChart && currentChart.render) currentChart.render();
-}
-
-/* ========== Upload CSV ========== */
-document.getElementById("csvFile").addEventListener("change", function(e){
-  const file = e.target.files[0];
-  if(!file) return;
-  Papa.parse(file, {
-    header:true,
-    skipEmptyLines:true,
-    complete: function(results){
-      data = results.data.map(row => {
-        // manter os campos chaves como strings caso estejam null
-        return Object.fromEntries(Object.entries(row).map(([k,v]) => [k, v === null ? "" : v]));
-      });
-      normalizeUsers(data);
-      populateFilters();
-      generateTable(data);
-    }
-  });
-});
-
-/* ========== Funções auxiliares para gráficos (agregação) ========== */
-/* Agrupa rows por date (string) e usuário, somando Quantidade de Pacientes (ou contando 1 se não numérico) */
-function aggregateByDateAndUser(rows){
-  // estrutura: counts[date][user] = somaQuantidade
-  const counts = {};
-  const usersSet = new Set();
-  rows.forEach(r=>{
-    const dateKey = r["Data do Registro"] || "Sem data";
-    const user = r["Usuário"] || extractUserFromMessage(r["Mensagem"]) || "Sem usuário";
-    usersSet.add(user);
-    const q = Number(r["Quantidade de Pacientes"]);
-    const val = (!isNaN(q) ? q : 1);
-    counts[dateKey] = counts[dateKey] || {};
-    counts[dateKey][user] = (counts[dateKey][user] || 0) + val;
-  });
-  return { counts, users: [...usersSet] };
-}
-
-/* Agrupa por categoria (tipo de mensagem | assunto) e usuário */
-function aggregateByCategoryAndUser(rows){
-  // counts[category][user] = soma
-  const counts = {};
-  const usersSet = new Set();
-  rows.forEach(r=>{
-    const cat = (r["Tipo de Mensagem"]||"Sem Tipo") + " | " + (r["Assunto/Contexto"]||"Sem Assunto");
-    const user = r["Usuário"] || extractUserFromMessage(r["Mensagem"]) || "Sem usuário";
-    usersSet.add(user);
-    const q = Number(r["Quantidade de Pacientes"]); const val = (!isNaN(q) ? q : 1);
-    counts[cat] = counts[cat] || {};
-    counts[cat][user] = (counts[cat][user] || 0) + val;
-  });
-  return { counts, users: [...usersSet] };
-}
-
-/* ========== Gráficos (modal) ========== */
-function openGraph(type){
-  const modal = document.getElementById("graphModal");
-  modal.style.display = "flex";
-  const canvas = document.getElementById("graphCanvas");
-  const title = document.getElementById("graphTitle");
-  const filtersDiv = document.getElementById("graphFilters");
-  const base = getFilteredData();
-  title.innerText = type === "linear" ? "Linear Regression" : type === "barras" ? "Gráfico de Barras" : type === "treemap" ? "Treemap" : "Random Forest";
-
-  if(currentChart){ try{ currentChart.destroy(); }catch(e){} currentChart = null; }
-
-  /* ---------- BARRAS (comparativo multi-usuário) ---------- */
-  if(type === "barras"){
-    filtersDiv.innerHTML = `
-      <input type="date" id="bStart" />
-      <input type="date" id="bEnd" />
-      <select id="bUser" multiple size="5" title="Selecione usuários (CTRL/CMD para múltipla seleção)"></select>
-    `;
-    const sel = document.getElementById("bUser");
-    // preenche opções com usuários existentes no base
-    const usersAll = [...new Set(base.map(r=>r["Usuário"]))].filter(x=>x);
-    usersAll.forEach(u=>{ const o = document.createElement("option"); o.value = u; o.text = u; sel.appendChild(o); });
-    // por padrão, pré-seleciona os usuários escolhidos no filtro principal
-    const mainSel = getSelectedValues("filterUser");
-    if(mainSel.length>0) { Array.from(sel.options).forEach(o => { if(mainSel.includes(o.value)) o.selected = true; }); }
-
-    const render = ()=>{
-      const s = document.getElementById("bStart").value ? new Date(document.getElementById("bStart").value) : null;
-      const e = document.getElementById("bEnd").value ? new Date(document.getElementById("bEnd").value) : null;
-      const ufilter = getSelectedValues("bUser"); // array
-      const rows = base.filter(r=>{
-        const d = parseDate(r["Data do Registro"]); if(!d) return false;
-        if(s && d < s) return false; if(e && d > e) return false;
-        if(ufilter.length>0 && !ufilter.includes(r["Usuário"])) return false;
-        return true;
-      });
-
-      // agrupar por data e usuário (soma Quantidade)
-      const { counts } = aggregateByDateAndUser(rows);
-      const labels = Object.keys(counts).sort((a,b)=>{
-        const da = parseDate(a) || new Date(a); const db = parseDate(b) || new Date(b);
-        return new Date(da) - new Date(db);
-      });
-      // selecionar lista de usuários a plotar: se ufilter vazio -> todos encontrados; senão -> ufilter
-      const usersToPlot = ufilter.length>0 ? ufilter : [...new Set(rows.map(r=>r["Usuário"]))].filter(x=>x);
-
-      // montar datasets por usuário
-      const datasets = usersToPlot.map((u,i)=>{
-        const arr = labels.map(d => (counts[d] && counts[d][u]) ? counts[d][u] : 0);
-        return {
-          label: u,
-          data: arr,
-          backgroundColor: COLORS[i % COLORS.length]
-        };
-      });
-
-      if(currentChart) currentChart.destroy();
-      currentChart = new Chart(canvas.getContext('2d'), {
-        type: 'bar',
-        data: { labels, datasets },
-        options: {
-          responsive:true, maintainAspectRatio:false,
-          plugins: { legend: { position: 'bottom' } },
-          scales: { x: { title: { display:true, text:'Data' } }, y: { beginAtZero:true, title:{ display:true, text: 'Quantidade de Pacientes' } } }
-        }
-      });
-    };
-
-    render();
-    document.querySelectorAll("#bStart,#bEnd,#bUser").forEach(el=>el.addEventListener("input", render));
-    currentChart.render = render;
+function atualizarGraficos() {
+  const usuariosSelecionados = Array.from(document.getElementById("usuariosSelect").selectedOptions).map(o => o.value);
+  if (!usuariosSelecionados.length) {
+    alert("Selecione pelo menos um usuário!");
     return;
   }
 
-  /* ---------- LINEAR REGRESSION (uma linha por usuário + R² + previsão) ---------- */
-  if(type === "linear"){
-    filtersDiv.innerHTML = `
-      <input type="date" id="inStart" />
-      <input type="date" id="inEnd" />
-      <select id="lUsers" multiple size="5" title="Selecione usuários (CTRL/CMD)"></select>
-    `;
-    const sel = document.getElementById("lUsers");
-    const allUsers = [...new Set(base.map(r=>r["Usuário"]))].filter(x=>x);
-    allUsers.forEach(u=>{ const o=document.createElement("option"); o.value=u; o.text=u; sel.appendChild(o); });
-    // pré-seleciona os escolhidos no filtro principal
-    const mainSel = getSelectedValues("filterUser");
-    if(mainSel.length>0) Array.from(sel.options).forEach(o => { if(mainSel.includes(o.value)) o.selected = true; });
-
-    const render = ()=>{
-      const s = document.getElementById("inStart").value ? new Date(document.getElementById("inStart").value) : null;
-      const e = document.getElementById("inEnd").value ? new Date(document.getElementById("inEnd").value) : null;
-      const ufilter = getSelectedValues("lUsers");
-
-      const rows = base.filter(r=>{
-        const d = parseDate(r["Data do Registro"]); if(!d) return false;
-        if(s && d < s) return false; if(e && d > e) return false;
-        if(ufilter.length>0 && !ufilter.includes(r["Usuário"])) return false;
-        return true;
-      });
-
-      // juntar datas únicas ordenadas
-      const dateSet = new Set(rows.map(r=>r["Data do Registro"] || ""));
-      const labels = [...dateSet].sort((a,b)=> {
-        const da = parseDate(a) || new Date(a); const db = parseDate(b) || new Date(b);
-        return new Date(da) - new Date(db);
-      });
-
-      // preparar dados por usuário alinhados a labels (somando Quantidade)
-      const usersToPlot = ufilter.length>0 ? ufilter : [...new Set(rows.map(r=>r["Usuário"]))].filter(x=>x);
-      const counts = {}; // counts[date][user]
-      rows.forEach(r=>{
-        const dateKey = r["Data do Registro"] || "Sem data";
-        const u = r["Usuário"] || "Sem usuário";
-        const q = Number(r["Quantidade de Pacientes"]);
-        const val = (!isNaN(q) ? q : 1);
-        counts[dateKey] = counts[dateKey] || {};
-        counts[dateKey][u] = (counts[dateKey][u] || 0) + val;
-      });
-
-      // construir datasets: para cada user => pontos + trendline (regressão)
-      const datasets = [];
-      usersToPlot.forEach((u, i) => {
-        const y = labels.map(d => (counts[d] && counts[d][u]) ? counts[d][u] : 0);
-        // regressão linear simples (x = 0..n-1)
-        const n = y.length;
-        const x = [...Array(n)].map((_,k)=>k);
-        let sumX=0,sumY=0,sumXY=0,sumXX=0;
-        for(let k=0;k<n;k++){ sumX += x[k]; sumY += y[k]; sumXY += x[k]*y[k]; sumXX += x[k]*x[k]; }
-        let slope = 0, intercept = 0;
-        if(n>0){
-          const denom = (n*sumXX - sumX*sumX);
-          slope = denom !== 0 ? (n*sumXY - sumX*sumY)/denom : 0;
-          intercept = (sumY - slope*sumX)/n;
-        }
-        const trend = x.map(v => slope*v + intercept);
-        // calcular R²
-        const meanY = n ? (sumY / n) : 0;
-        let ssRes = 0, ssTot = 0;
-        for(let k=0;k<n;k++){ ssRes += Math.pow(y[k] - (slope*x[k]+intercept), 2); ssTot += Math.pow(y[k] - meanY, 2); }
-        const r2 = ssTot === 0 ? (ssRes===0 ? 1 : 0) : (1 - (ssRes/ssTot));
-        const nextPred = slope * n + intercept;
-
-        // dataset pontos
-        datasets.push({
-          label: `${u} (dados)`,
-          data: y,
-          borderColor: COLORS[i % COLORS.length],
-          backgroundColor: COLORS[i % COLORS.length],
-          tension: 0.2,
-          showLine: false,
-          pointRadius: 4,
-          parsing: { yAxisKey: null } // default parsing
-        });
-        // dataset trendline
-        datasets.push({
-          label: `${u} trend — R²=${r2.toFixed(2)} — previsão próximo=${Number(nextPred.toFixed(1))}`,
-          data: trend,
-          borderColor: COLORS[i % COLORS.length],
-          borderWidth: 2,
-          fill:false,
-          pointRadius: 0,
-          borderDash: [6,4]
-        });
-      });
-
-      if(currentChart) currentChart.destroy();
-      currentChart = new Chart(canvas.getContext('2d'), {
-        type: 'line',
-        data: { labels, datasets },
-        options: {
-          responsive:true, maintainAspectRatio:false,
-          plugins:{ legend: { position:'bottom' } },
-          scales:{ x:{ title:{ display:true, text:'Data do Registro' } }, y:{ beginAtZero:true, title:{ display:true, text:'Quantidade de Pacientes' } } }
-        }
-      });
-    };
-
-    render();
-    document.querySelectorAll("#inStart,#inEnd,#lUsers").forEach(el=>el.addEventListener("input", render));
-    currentChart.render = render;
-    return;
-  }
-
-  /* ---------- TREEMAP (cada usuário com cor, mostrando proporção) ---------- */
-  if(type === "treemap"){
-    filtersDiv.innerHTML = `
-      <input type="date" id="tStart" />
-      <input type="date" id="tEnd" />
-      <select id="tUsers" multiple size="6" title="Selecione usuários (CTRL/CMD)"></select>
-    `;
-    const sel = document.getElementById("tUsers");
-    const usersAll = [...new Set(base.map(r=>r["Usuário"]))].filter(x=>x);
-    usersAll.forEach(u=>{ const o=document.createElement("option"); o.value=u; o.text=u; sel.appendChild(o); });
-    const mainSel = getSelectedValues("filterUser");
-    if(mainSel.length>0) Array.from(sel.options).forEach(o => { if(mainSel.includes(o.value)) o.selected = true; });
-
-    const render = ()=>{
-      const s = document.getElementById("tStart").value ? new Date(document.getElementById("tStart").value) : null;
-      const e = document.getElementById("tEnd").value ? new Date(document.getElementById("tEnd").value) : null;
-      const ufilter = getSelectedValues("tUsers");
-
-      const rows = base.filter(r=>{
-        const d = parseDate(r["Data do Registro"]); if(!d) return false;
-        if(s && d < s) return false; if(e && d > e) return false;
-        if(ufilter.length>0 && !ufilter.includes(r["Usuário"])) return false;
-        return true;
-      });
-
-      // agrupar por usuário e categoria
-      const col = {}; // col[user][cat] = suma
-      let totalSum = 0;
-      rows.forEach(r=>{
-        const user = r["Usuário"] || "Sem usuário";
-        const cat = (r["Tipo de Mensagem"]||"Sem Tipo") + " | " + (r["Assunto/Contexto"]||"Sem Assunto");
-        const q = Number(r["Quantidade de Pacientes"]); const val = (!isNaN(q) ? q : 1);
-        col[user] = col[user] || {};
-        col[user][cat] = (col[user][cat] || 0) + val;
-        totalSum += val;
-      });
-
-      // construir nodes para treemap: cada nó = {v, category: user, label: ...}
-      const nodes = [];
-      const bgColors = [];
-      const usersToPlot = ufilter.length>0 ? ufilter : Object.keys(col);
-      usersToPlot.forEach((user, idx)=>{
-        const catObj = col[user] || {};
-        Object.keys(catObj).forEach(cat=>{
-          const v = catObj[cat];
-          const pct = totalSum ? ((v/totalSum)*100) : 0;
-          nodes.push({ v, category: user, label: `${user} — ${cat} (${pct.toFixed(1)}%)` });
-          bgColors.push(COLORS[idx % COLORS.length]);
-        });
-      });
-
-      if(currentChart) currentChart.destroy();
-      currentChart = new Chart(canvas.getContext('2d'), {
-        type: 'treemap',
-        data: {
-          datasets: [{
-            tree: nodes,
-            key: 'v',
-            groups: ['category'],
-            spacing: 1,
-            // backgroundColor aceita array alinhada aos nós
-            backgroundColor: bgColors,
-            borderWidth: 1
-          }]
-        },
-        options: {
-          maintainAspectRatio:false,
-          plugins:{ legend:{ display:false } },
-        }
-      });
-    };
-
-    render();
-    document.querySelectorAll("#tStart,#tEnd,#tUsers").forEach(el=>el.addEventListener("input", render));
-    currentChart.render = render;
-    return;
-  }
-
-  /* ---------- RANDOM FOREST (aqui usamos como gráfico de importância/categoria por usuário) ---------- */
-  if(type === "randomforest"){
-    filtersDiv.innerHTML = `
-      <input type="date" id="rStart" />
-      <input type="date" id="rEnd" />
-      <select id="rUsers" multiple size="6" title="Selecione usuários (CTRL/CMD)"></select>
-    `;
-    const sel = document.getElementById("rUsers");
-    const usersAll = [...new Set(base.map(r=>r["Usuário"]))].filter(x=>x);
-    usersAll.forEach(u=>{ const o=document.createElement("option"); o.value=u; o.text=u; sel.appendChild(o); });
-    const mainSel = getSelectedValues("filterUser");
-    if(mainSel.length>0) Array.from(sel.options).forEach(o => { if(mainSel.includes(o.value)) o.selected = true; });
-
-    const render = ()=>{
-      const s = document.getElementById("rStart").value ? new Date(document.getElementById("rStart").value) : null;
-      const e = document.getElementById("rEnd").value ? new Date(document.getElementById("rEnd").value) : null;
-      const ufilter = getSelectedValues("rUsers");
-
-      const rows = base.filter(r=>{
-        const d = parseDate(r["Data do Registro"]); if(!d) return false;
-        if(s && d < s) return false; if(e && d > e) return false;
-        if(ufilter.length>0 && !ufilter.includes(r["Usuário"])) return false;
-        return true;
-      });
-
-      // agregação por categoria x usuário
-      const { counts } = aggregateByCategoryAndUser(rows);
-      const labels = Object.keys(counts);
-      const usersToPlot = ufilter.length>0 ? ufilter : [...new Set(rows.map(r=>r["Usuário"]))].filter(x=>x);
-
-      const datasets = usersToPlot.map((u,i)=>{
-        return {
-          label: u,
-          data: labels.map(cat => (counts[cat] && counts[cat][u]) ? counts[cat][u] : 0),
-          backgroundColor: COLORS[i % COLORS.length]
-        };
-      });
-
-      if(currentChart) currentChart.destroy();
-      currentChart = new Chart(canvas.getContext('2d'), {
-        type: 'bar',
-        data: { labels, datasets },
-        options:{
-          responsive:true, maintainAspectRatio:false,
-          plugins:{ legend:{ position:'bottom' } },
-          scales:{ x:{ stacked:false }, y:{ beginAtZero:true } }
-        }
-      });
-    };
-
-    render();
-    document.querySelectorAll("#rStart,#rEnd,#rUsers").forEach(el=>el.addEventListener("input", render));
-    currentChart.render = render;
-    return;
-  }
-}
-
-/* fechar modal */
-function closeGraph(){ document.getElementById("graphModal").style.display = "none"; if(currentChart){ try{ currentChart.destroy(); }catch(e){} currentChart = null; } }
-
-/* ========== Insights locais (sem API) ========== */
-function generateLocalInsights(){
-  const rows = getFilteredData();
-  if(rows.length===0){ showInsights("Nenhum dado filtrado para gerar insights."); return; }
-
-  // calcular soma por usuário
-  const sums = {};
-  rows.forEach(r=>{
-    const u = r["Usuário"] || "Sem usuário";
-    const q = Number(r["Quantidade de Pacientes"]); const val = (!isNaN(q) ? q : 1);
-    sums[u] = (sums[u] || 0) + val;
-  });
-  const users = Object.keys(sums);
-  users.sort((a,b)=> sums[b]-sums[a]);
-
-  const mediaGeral = (Object.values(sums).reduce((a,b)=>a+b,0) / users.length) || 0;
-  let text = `<strong>Insights locais:</strong><br>`;
-  text += `Total de usuários analisados: <b>${users.length}</b><br>`;
-  text += `Usuário com maior total: <b>${users[0]}</b> — ${sums[users[0]]} pacientes.<br>`;
-  text += `Usuário com menor total: <b>${users[users.length-1]}</b> — ${sums[users[users.length-1]]} pacientes.<br>`;
-  text += `Média de pacientes por usuário: <b>${Number(mediaGeral.toFixed(2))}</b>.<br>`;
-
-  // top categorias por usuário (apenas 1º e 2º)
-  const catUser = {};
-  rows.forEach(r=>{
-    const cat = (r["Tipo de Mensagem"]||"Sem Tipo") + " | " + (r["Assunto/Contexto"]||"Sem Assunto");
-    const u = r["Usuário"] || "Sem usuário";
-    const q = Number(r["Quantidade de Pacientes"]); const val = (!isNaN(q) ? q : 1);
-    catUser[u] = catUser[u] || {};
-    catUser[u][cat] = (catUser[u][cat] || 0) + val;
-  });
-  text += `<br><strong>Top categorias por usuário (1º):</strong><br>`;
-  users.slice(0,5).forEach(u=>{
-    const cs = catUser[u] || {};
-    const top = Object.entries(cs).sort((a,b)=>b[1]-a[1])[0];
-    if(top) text += `${u}: ${top[0]} — ${top[1]}<br>`;
-  });
-
-  showInsights(text);
-}
-
-/* mostra texto de insights na tela */
-function showInsights(html){
-  const box = document.getElementById("insightsBox");
-  box.style.display = "block";
-  box.innerHTML = html;
-}
-
-/* ========== Mistral Integration (call) ========== */
-/* Gera um resumo numérico e pergunta ao Mistral por insights */
-async function generateMistralInsights(){
-  const rows = getFilteredData();
-  if(rows.length === 0){ showInsights("Nenhum dado filtrado para enviar ao Mistral."); return; }
-
-  // monta resumo: totais por usuário, top categorias, período
-  const start = document.getElementById("filterStartDate").value || "inicio disponível no CSV";
-  const end = document.getElementById("filterEndDate").value || "fim disponível no CSV";
-  const users = [...new Set(rows.map(r=>r["Usuário"]))].filter(x=>x);
-
-  // soma por usuário
-  const sums = {};
-  rows.forEach(r => {
-    const u = r["Usuário"] || "Sem usuário";
-    const q = Number(r["Quantidade de Pacientes"]); const val = (!isNaN(q) ? q : 1);
-    sums[u] = (sums[u] || 0) + val;
-  });
-  const sumsText = users.map(u => `${u}: ${sums[u] || 0}`).join("; ");
-
-  // top categorias (globais)
-  const catAgg = {};
-  rows.forEach(r=>{
-    const cat = (r["Tipo de Mensagem"]||"Sem Tipo") + " | " + (r["Assunto/Contexto"]||"Sem Assunto");
-    const q = Number(r["Quantidade de Pacientes"]); const val = (!isNaN(q) ? q : 1);
-    catAgg[cat] = (catAgg[cat] || 0) + val;
-  });
-  const topCats = Object.entries(catAgg).sort((a,b)=>b[1]-a[1]).slice(0,5).map(t=>`${t[0]} (${t[1]})`).join("; ");
-
-  // quick regression R² por usuário (opcional)
-  const { counts } = aggregateByDateAndUser(rows);
-  const labels = Object.keys(counts).sort((a,b)=> (parseDate(a) || new Date(a)) - (parseDate(b) || new Date(b)));
-  const userR2 = {};
-  users.forEach(u=>{
-    const y = labels.map(d => (counts[d] && counts[d][u]) ? counts[d][u] : 0);
-    const n = y.length;
-    const x = [...Array(n)].map((_,k)=>k);
-    let sumX=0,sumY=0,sumXY=0,sumXX=0;
-    for(let k=0;k<n;k++){ sumX+=x[k]; sumY+=y[k]; sumXY+=x[k]*y[k]; sumXX+=x[k]*x[k]; }
-    const denom = (n*sumXX - sumX*sumX);
-    const slope = denom !== 0 ? (n*sumXY - sumX*sumY)/denom : 0;
-    const intercept = n ? (sumY - slope*sumX)/n : 0;
-    let ssRes=0, ssTot=0;
-    const meanY = n ? (sumY/n) : 0;
-    for(let k=0;k<n;k++){ ssRes += Math.pow(y[k] - (slope*x[k]+intercept), 2); ssTot += Math.pow(y[k] - meanY, 2); }
-    const r2 = ssTot === 0 ? (ssRes === 0 ? 1 : 0) : (1 - ssRes/ssTot);
-    userR2[u] = r2;
-  });
-
-  const r2Text = users.map(u => `${u}: R²=${(userR2[u]||0).toFixed(2)}`).join("; ");
-
-  // montar prompt
-  const prompt = `
-Você é um analista de dados objetivo e conciso. A seguir há um resumo dos dados extraídos e algumas métricas.
-Período filtrado: ${start} até ${end}.
-Usuários selecionados (${users.length}): ${users.join(", ")}.
-Totais por usuário: ${sumsText}.
-Top categorias (globais): ${topCats}.
-R² (regressão linear simples por usuário): ${r2Text}.
-
-Com base nisso, gere:
-1) 5 insights acionáveis e curtos (2-3 linhas cada).
-2) Indicações sobre usuários com maior tendência de crescimento ou queda.
-3) Sugestões de ações operacionais (ex.: re-treinar, redistribuir carga, revisar processos).
-4) Se houver dados insuficientes para alguma conclusão, mencione.
-
-Seja objetivo e numericamente justificável quando possível.
-`;
-
-  // chama a API Mistral (via proxy se fornecido, caso contrário tenta chamar direto — cuidado com CORS e segurança)
-  try{
-    const proxyUrl = document.getElementById("mistralProxy").value.trim();
-    const apiKey = document.getElementById("mistralKey").value.trim();
-
-    const payload = {
-      model: "mistral-small-latest", // pode ajustar conforme seu plano
-      messages: [
-        { role: "system", content: "Você é um analista de dados objetivo." },
-        { role: "user", content: prompt }
-      ],
-      max_tokens: 800,
-      temperature: 0.2
-    };
-
-    let responseJson = null;
-
-    if(proxyUrl){
-      // recomendado: enviar o body ao seu endpoint servidor que adiciona a chave
-      const resp = await fetch(proxyUrl, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
-      if(!resp.ok) throw new Error(`Erro no proxy: ${resp.status} ${resp.statusText}`);
-      responseJson = await resp.json();
-    } else {
-      // ATENÇÃO: CHAMADA DIRETA DO BROWSER PODE FALHAR (CORS) E EXPÕE SUA API KEY
-      if(!apiKey) { alert("Cole sua Mistral API key no campo indicado ou configure um proxy."); return; }
-      const resp = await fetch("https://api.mistral.ai/v1/chat/completions", {
-        method:'POST',
-        headers: {
-          'Content-Type':'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify(payload)
-      });
-      if(!resp.ok){
-        const txt = await resp.text(); throw new Error(`Erro Mistral: ${resp.status} ${resp.statusText} — ${txt}`);
-      }
-      responseJson = await resp.json();
+  // Gráfico de Barras
+  const ctx = document.getElementById("graficoBarras").getContext("2d");
+  if (chartBarras) chartBarras.destroy();
+  chartBarras = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: ["Período 1","Período 2","Período 3","Período 4"],
+      datasets: usuariosSelecionados.map((u,i) => ({
+        label: u,
+        data: dataset[u],
+        backgroundColor: ["#ff6384","#36a2eb","#4bc0c0","#9966ff"][i % 4]
+      }))
     }
+  });
 
-    // extrair resposta (vários formatos possíveis)
-    let assistantText = "";
-    if(responseJson.choices && responseJson.choices.length>0){
-      assistantText = (responseJson.choices[0].message && responseJson.choices[0].message.content) ? responseJson.choices[0].message.content : (responseJson.choices[0].text || "");
-    } else if(responseJson.output && responseJson.output[0]) {
-      assistantText = responseJson.output[0].content || JSON.stringify(responseJson);
-    } else {
-      assistantText = JSON.stringify(responseJson);
-    }
+  // Linear Regression
+  const traces = usuariosSelecionados.map((u,i) => ({
+    x: [1,2,3,4],
+    y: dataset[u],
+    mode: "lines+markers",
+    name: u,
+    line: { color: ["red","blue","green","purple"][i % 4] }
+  }));
+  Plotly.newPlot("graficoLinear", traces);
 
-    showInsights(`<strong>Insights Mistral (via API):</strong><br><div style="white-space:pre-wrap;margin-top:8px;">${assistantText}</div>`);
-  }catch(err){
-    console.error(err);
-    showInsights(`<strong>Erro ao gerar insights com Mistral:</strong><br>${escapeHtml(String(err.message || err))}<br><br>Verifique se o proxy está ativo ou se a chave é válida.`);
-  }
+  // Treemap
+  const treemap = [{
+    type: "treemap",
+    labels: usuariosSelecionados,
+    parents: usuariosSelecionados.map(() => ""),
+    values: usuariosSelecionados.map(u => dataset[u].reduce((a,b)=>a+b,0)),
+    textinfo: "label+percent entry",
+    marker: { colors: ["#ff9999","#99ccff","#99ff99","#ffcc99"] }
+  }];
+  Plotly.newPlot("graficoTreemap", treemap);
+
+  // Random Forest (exemplo fake)
+  const rf = usuariosSelecionados.map((u,i) => ({
+    x: ["Var1","Var2","Var3"],
+    y: [Math.random()*10, Math.random()*10, Math.random()*10],
+    type: "bar",
+    name: u
+  }));
+  Plotly.newPlot("graficoRF", rf);
 }
 
-/* ========== Utilitário final ========== */
-function escapeHtml(s){ return (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+async function gerarInsightsIA() {
+  const usuariosSelecionados = Array.from(document.getElementById("usuariosSelect").selectedOptions).map(o => o.value);
+  const resumo = usuariosSelecionados.map(u => {
+    const soma = dataset[u].reduce((a,b)=>a+b,0);
+    const media = soma / dataset[u].length;
+    return `${u} -> Soma: ${soma}, Média: ${media.toFixed(2)}, Valores: [${dataset[u].join(", ")}]`;
+  }).join(" | ");
 
+  document.getElementById("insightsIA").innerText = "⏳ Gerando insights...";
+
+  const response = await fetch("/api/mistral", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dados: resumo })
+  });
+
+  const data = await response.json();
+  document.getElementById("insightsIA").innerText = data.insights || "Erro ao gerar insights.";
+}
 </script>
 </body>
 </html>
