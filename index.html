@@ -3,163 +3,160 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dashboard Log TXT - IA</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<title>Dashboard Logs - IA</title>
 <style>
-body { font-family: Arial, sans-serif; background:#f5f5f5; margin:0; padding:20px; }
-.container { max-width: 1200px; margin:auto; background:#fff; padding:20px; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.1);}
-h1 { text-align:center; margin-bottom:20px; }
-input[type=file] { display:block; margin-bottom:20px; }
-table { border-collapse: collapse; width:100%; margin-bottom:30px; }
-table th, table td { border:1px solid #ccc; padding:8px; text-align:center; }
-table th { background:#0070f3; color:#fff; }
-#resultado { padding:15px; background:#e6f7ff; border-left:5px solid #0070f3; border-radius:5px; white-space: pre-wrap; }
-.loading { font-weight:bold; color:#0070f3; }
+body {
+  font-family: Arial, sans-serif;
+  padding: 30px;
+  background-color: #f9f9f9;
+}
+h1 { color: #333; text-align:center; margin-bottom:20px;}
+input[type="file"] {
+  margin-bottom: 20px;
+}
+button {
+  padding: 10px 20px;
+  font-size: 16px;
+  background-color: #0070f3;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+button:hover { background-color: #0055c7; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+th, td {
+  border: 1px solid #ccc;
+  padding: 8px;
+  text-align: left;
+}
+th {
+  background-color: #0070f3;
+  color: #fff;
+}
+#resultado { margin-top:20px; padding:10px; background:#fff; border-radius:5px; }
 </style>
 </head>
 <body>
-<div class="container">
-<h1>Dashboard Log TXT - IA</h1>
+
+<h1>Dashboard Logs - IA</h1>
+
 <input type="file" id="fileInput" accept=".txt">
-<div id="tableContainer"></div>
+<button id="processar">Processar Log</button>
 
-<canvas id="treemapChart" style="height:300px;"></canvas>
-<canvas id="barChart" style="height:300px;"></canvas>
-<canvas id="lineChart" style="height:300px;"></canvas>
-
-<h2>Insights da IA</h2>
+<div id="preview"></div>
 <div id="resultado"></div>
-</div>
 
 <script>
 const fileInput = document.getElementById("fileInput");
-const tableContainer = document.getElementById("tableContainer");
+const processarBtn = document.getElementById("processar");
+const previewDiv = document.getElementById("preview");
 const resultadoDiv = document.getElementById("resultado");
 
-let parsedData = [];
+let jsonData = [];
 
-fileInput.addEventListener("change", (event) => {
-    const file = event.target.files[0];
-    if(!file) return;
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const text = e.target.result;
-        parseTXT(text);
-        renderTable();
-        generateCharts();
-        generateInsights(text);
-    };
-    reader.readAsText(file, "UTF-8");
-});
+function parseLogToJSON(logText) {
+  const lines = logText.split(/\r?\n/).filter(l=>l.trim()!=="");
+  const dataArray = [];
 
-function parseTXT(txt) {
-    const lines = txt.split("\n");
-    parsedData = lines.map(line => {
-        // Formato básico: "Data, Hora" + Mensagem
-        const regex = /^(\d{2}\/\d{2}\/\d{4}), (\d{2}:\d{2}:\d{2})\s*(.*)$/;
-        const match = line.match(regex);
-        let data = "", hora = "", mensagem = "";
-        if(match){
-            data = match[1];
-            hora = match[2];
-            mensagem = match[3];
-        }
-        // Usuário (ex.: primeira palavra ou nome detectado)
-        let usuario = "Desconhecido";
-        if(mensagem.includes("Giovani de Oliveira Souza")) usuario = "Giovani de Oliveira Souza";
-        else if(mensagem.includes("Giuliano Campolim Gagliotti")) usuario = "Giuliano Campolim Gagliotti";
+  for (let i = 0; i < lines.length; i+=2) {
+    const linhaData = lines[i];
+    const mensagem = lines[i+1] || "";
 
-        // Extrair Quantidade de Pacientes e Data do Registro
-        let quantidade = null, dataRegistro = null;
-        const qtdMatch = mensagem.match(/atendeu a (\d+) pacientes?/i);
-        if(qtdMatch) quantidade = parseInt(qtdMatch[1]);
-        const dataRegMatch = mensagem.match(/no dia (\d{2}\/\d{2}\/\d{2,4})/i);
-        if(dataRegMatch) dataRegistro = dataRegMatch[1];
+    const [dataRaw, horaRaw] = linhaData.split(", ");
+    let data = dataRaw || "";
+    let hora = horaRaw || "";
 
-        return {
-            Data: data,
-            Hora: hora,
-            Mensagem: mensagem,
-            Usuario: usuario,
-            TipoMensagem: "",
-            AssuntoContexto: "",
-            QuantidadePacientes: quantidade,
-            DataRegistro: dataRegistro,
-            TipoProcedimento: "",
-            StatusAcao: "",
-            Confirmacao: ""
-        };
+    // Extrair quantidade de pacientes
+    let qtdPacientesMatch = mensagem.match(/atendeu a (\d+)/);
+    let qtdPacientes = qtdPacientesMatch ? parseInt(qtdPacientesMatch[1]) : "";
+
+    // Extrair data do registro
+    let dataRegistroMatch = mensagem.match(/no dia (\d{2}\/\d{2}\/\d{2,4})/);
+    let dataRegistro = dataRegistroMatch ? dataRegistroMatch[1] : "";
+
+    // Tipo de procedimento
+    let tipoProcedimento = "";
+    if(mensagem.toLowerCase().includes("cirurgia")) tipoProcedimento = "Cirurgias";
+    else if(mensagem.toLowerCase().includes("visitas")) tipoProcedimento = "Visitas";
+    else if(mensagem.toLowerCase().includes("ambulatorial")) tipoProcedimento = "Ambulatório";
+
+    // Status ação
+    let status = mensagem.toLowerCase().includes("registro concluído") ? "Concluído" : "";
+
+    // Confirmação
+    let confirmacao = (mensagem.trim()==="Sim" || mensagem.trim()==="Não") ? mensagem.trim() : "";
+
+    dataArray.push({
+      Data: data,
+      Hora: hora,
+      Mensagem: mensagem,
+      Usuario: "Sistema",
+      TipoMensagem: "",
+      Assunto: "",
+      QuantidadePacientes: qtdPacientes,
+      DataRegistro: dataRegistro,
+      TipoProcedimento: tipoProcedimento,
+      StatusAcao: status,
+      Confirmacao: confirmacao
     });
+  }
+
+  return dataArray;
 }
 
-// Renderiza tabela
-function renderTable() {
-    let html = "<table><tr>";
-    const headers = ["Data","Hora","Mensagem","Usuario","TipoMensagem","AssuntoContexto","QuantidadePacientes","DataRegistro","TipoProcedimento","StatusAcao","Confirmacao"];
-    headers.forEach(h => html += `<th>${h}</th>`);
-    html += "</tr>";
-    parsedData.forEach(row => {
-        html += "<tr>";
-        headers.forEach(h => html += `<td>${row[h] !== null ? row[h] : ""}</td>`);
-        html += "</tr>";
+processarBtn.addEventListener("click", () => {
+  const file = fileInput.files[0];
+  if (!file) {
+    alert("Selecione um arquivo TXT");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target.result;
+    jsonData = parseLogToJSON(text);
+
+    // Mostrar tabela preview (5 linhas)
+    let html = "<table><tr><th>Data</th><th>Hora</th><th>Mensagem</th><th>Qtd Pacientes</th><th>Data Registro</th></tr>";
+    jsonData.slice(0,5).forEach(row=>{
+      html += `<tr>
+        <td>${row.Data}</td>
+        <td>${row.Hora}</td>
+        <td>${row.Mensagem}</td>
+        <td>${row.QuantidadePacientes}</td>
+        <td>${row.DataRegistro}</td>
+      </tr>`;
     });
     html += "</table>";
-    tableContainer.innerHTML = html;
-}
+    previewDiv.innerHTML = html;
 
-// Gráficos
-function generateCharts() {
-    const dataByDateUser = {};
-    parsedData.forEach(d => {
-        if(d.DataRegistro && d.QuantidadePacientes !== null){
-            const key = `${d.DataRegistro} | ${d.Usuario}`;
-            dataByDateUser[key] = (dataByDateUser[key] || 0) + d.QuantidadePacientes;
-        }
+    // Aqui você pode chamar suas funções de gráfico usando jsonData
+    resultadoDiv.textContent = "JSON processado. Pronto para gerar gráficos e enviar à IA.";
+  };
+  reader.readAsText(file);
+});
+
+// Exemplo de como enviar para a Mistral
+async function enviarParaIA(jsonData) {
+  try {
+    const resposta = await fetch("/api/gerar-insight", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dados: JSON.stringify(jsonData) })
     });
-    const labels = Object.keys(dataByDateUser);
-    const values = Object.values(dataByDateUser);
-
-    // Treemap (simulado via bar)
-    new Chart(document.getElementById("treemapChart").getContext("2d"), {
-        type:"bar",
-        data:{ labels, datasets:[{label:"Pacientes por Data e Usuário", data:values, backgroundColor:"#0070f3"}] },
-        options:{ responsive:true, plugins:{ legend:{ display:false } } }
-    });
-
-    // Bar Chart
-    new Chart(document.getElementById("barChart").getContext("2d"), {
-        type:"bar",
-        data:{ labels, datasets:[{label:"Pacientes", data:values, backgroundColor:"#ff7f0e"}] },
-        options:{ responsive:true }
-    });
-
-    // Line Chart (Linear Regression simplificado)
-    new Chart(document.getElementById("lineChart").getContext("2d"), {
-        type:"line",
-        data:{ labels, datasets:[{label:"Pacientes", data:values, borderColor:"#2ca02c", fill:false}] },
-        options:{ responsive:true }
-    });
-}
-
-// Envia todo o conteúdo do TXT para a IA Mistral
-async function generateInsights(txt) {
-    resultadoDiv.textContent = "Gerando insights...";
-    try {
-        const res = await fetch("/api/gerar-insight", {
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body: JSON.stringify({ dados: txt })
-        });
-        const json = await res.json();
-        if(res.ok){
-            resultadoDiv.textContent = json.insights;
-        } else {
-            resultadoDiv.textContent = `Erro: ${json.error || "Erro desconhecido"}`;
-        }
-    } catch(err){
-        resultadoDiv.textContent = `Erro ao conectar com a IA: ${err.message}`;
-    }
+    const json = await resposta.json();
+    console.log(json);
+    resultadoDiv.textContent = json.insights;
+  } catch(err) {
+    resultadoDiv.textContent = "Erro ao enviar para IA: " + err.message;
+  }
 }
 </script>
+
 </body>
 </html>
