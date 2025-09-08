@@ -1,122 +1,179 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<title>Dashboard com IA (Mistral)</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard IA - Mistral</title>
+  <style>
+    /* Reset básico */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(to right, #f0f4f8, #d9e2ec);
+      min-height: 100vh;
+      padding: 40px;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+
+    .container {
+      background: #fff;
+      padding: 30px;
+      border-radius: 12px;
+      max-width: 800px;
+      width: 100%;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+      color: #1a1a1a;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    textarea {
+      width: 100%;
+      height: 160px;
+      padding: 15px;
+      font-size: 16px;
+      border-radius: 10px;
+      border: 1px solid #ccd6e0;
+      resize: vertical;
+      margin-bottom: 20px;
+      transition: border 0.2s;
+    }
+
+    textarea:focus {
+      border-color: #0070f3;
+      outline: none;
+    }
+
+    button {
+      width: 100%;
+      padding: 15px;
+      font-size: 18px;
+      background-color: #0070f3;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background-color 0.3s, transform 0.2s;
+    }
+
+    button:hover {
+      background-color: #0055c7;
+      transform: translateY(-2px);
+    }
+
+    #resultado {
+      margin-top: 25px;
+      padding: 20px;
+      min-height: 80px;
+      background-color: #f1f5f9;
+      border-radius: 10px;
+      border-left: 5px solid #0070f3;
+      font-size: 16px;
+      white-space: pre-wrap;
+      transition: background-color 0.3s;
+    }
+
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: #0070f3;
+      font-weight: bold;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      background-color: #0070f3;
+      border-radius: 50%;
+      animation: blink 1.4s infinite both;
+    }
+
+    .dot:nth-child(1) { animation-delay: 0s; }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes blink {
+      0%, 80%, 100% { opacity: 0; }
+      40% { opacity: 1; }
+    }
+
+    .error {
+      color: #c53030;
+      border-left-color: #c53030;
+      background-color: #fee2e2;
+    }
+
+    .success {
+      border-left-color: #2f855a;
+      background-color: #e6fffa;
+      color: #2f855a;
+    }
+
+  </style>
 </head>
 <body>
-<h2>Comparação entre Usuários</h2>
 
-<label>Selecione usuários:</label>
-<select id="usuariosSelect" multiple>
-  <option value="Usuário A">Usuário A</option>
-  <option value="Usuário B">Usuário B</option>
-  <option value="Usuário C">Usuário C</option>
-  <option value="Usuário D">Usuário D</option>
-</select>
-
-<button onclick="atualizarGraficos()">Atualizar Gráficos</button>
-<button onclick="gerarInsightsIA()">Gerar Insights com IA</button>
-
-<h3>Gráfico de Barras</h3>
-<canvas id="graficoBarras"></canvas>
-
-<h3>Linear Regression</h3>
-<div id="graficoLinear"></div>
-
-<h3>Treemap</h3>
-<div id="graficoTreemap"></div>
-
-<h3>Random Forest (importância de variáveis)</h3>
-<div id="graficoRF"></div>
-
-<h3>Insights da IA</h3>
-<div id="insightsIA" style="white-space:pre-wrap; border:1px solid #ccc; padding:10px;"></div>
+<div class="container">
+  <h1>Dashboard IA - Mistral</h1>
+  <textarea id="dados" placeholder="Cole ou digite os dados aqui..."></textarea>
+  <button id="gerar">Gerar Insight</button>
+  <div id="resultado"></div>
+</div>
 
 <script>
-const dataset = {
-  "Usuário A": [10, 15, 20, 25],
-  "Usuário B": [12, 18, 22, 30],
-  "Usuário C": [8, 12, 15, 19],
-  "Usuário D": [14, 20, 25, 28]
-};
+  const btn = document.getElementById("gerar");
+  const resultadoDiv = document.getElementById("resultado");
+  const textarea = document.getElementById("dados");
 
-let chartBarras;
+  btn.addEventListener("click", async () => {
+    const dados = textarea.value.trim();
+    if (!dados) {
+      resultadoDiv.textContent = "Por favor, insira algum dado para analisar.";
+      resultadoDiv.className = "error";
+      return;
+    }
 
-function atualizarGraficos() {
-  const usuariosSelecionados = Array.from(document.getElementById("usuariosSelect").selectedOptions).map(o => o.value);
-  if (!usuariosSelecionados.length) {
-    alert("Selecione pelo menos um usuário!");
-    return;
-  }
+    // Mostra loading animado
+    resultadoDiv.innerHTML = `
+      <div class="loading">
+        Gerando insight
+        <span class="dot"></span>
+        <span class="dot"></span>
+        <span class="dot"></span>
+      </div>
+    `;
+    resultadoDiv.className = "";
 
-  // Gráfico de Barras
-  const ctx = document.getElementById("graficoBarras").getContext("2d");
-  if (chartBarras) chartBarras.destroy();
-  chartBarras = new Chart(ctx, {
-    type: "bar",
-    data: {
-      labels: ["Período 1","Período 2","Período 3","Período 4"],
-      datasets: usuariosSelecionados.map((u,i) => ({
-        label: u,
-        data: dataset[u],
-        backgroundColor: ["#ff6384","#36a2eb","#4bc0c0","#9966ff"][i % 4]
-      }))
+    try {
+      const resposta = await fetch("/api/gerar-insight", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dados })
+      });
+
+      const json = await resposta.json();
+
+      if (resposta.ok) {
+        resultadoDiv.textContent = json.insights;
+        resultadoDiv.className = "success";
+      } else {
+        resultadoDiv.textContent = `Erro: ${json.error || "Erro desconhecido"}`;
+        resultadoDiv.className = "error";
+      }
+
+    } catch (err) {
+      resultadoDiv.textContent = `Erro ao conectar com a API: ${err.message}`;
+      resultadoDiv.className = "error";
     }
   });
-
-  // Linear Regression
-  const traces = usuariosSelecionados.map((u,i) => ({
-    x: [1,2,3,4],
-    y: dataset[u],
-    mode: "lines+markers",
-    name: u,
-    line: { color: ["red","blue","green","purple"][i % 4] }
-  }));
-  Plotly.newPlot("graficoLinear", traces);
-
-  // Treemap
-  const treemap = [{
-    type: "treemap",
-    labels: usuariosSelecionados,
-    parents: usuariosSelecionados.map(() => ""),
-    values: usuariosSelecionados.map(u => dataset[u].reduce((a,b)=>a+b,0)),
-    textinfo: "label+percent entry",
-    marker: { colors: ["#ff9999","#99ccff","#99ff99","#ffcc99"] }
-  }];
-  Plotly.newPlot("graficoTreemap", treemap);
-
-  // Random Forest (exemplo fake)
-  const rf = usuariosSelecionados.map((u,i) => ({
-    x: ["Var1","Var2","Var3"],
-    y: [Math.random()*10, Math.random()*10, Math.random()*10],
-    type: "bar",
-    name: u
-  }));
-  Plotly.newPlot("graficoRF", rf);
-}
-
-async function gerarInsightsIA() {
-  const usuariosSelecionados = Array.from(document.getElementById("usuariosSelect").selectedOptions).map(o => o.value);
-  const resumo = usuariosSelecionados.map(u => {
-    const soma = dataset[u].reduce((a,b)=>a+b,0);
-    const media = soma / dataset[u].length;
-    return `${u} -> Soma: ${soma}, Média: ${media.toFixed(2)}, Valores: [${dataset[u].join(", ")}]`;
-  }).join(" | ");
-
-  document.getElementById("insightsIA").innerText = "⏳ Gerando insights...";
-
-  const response = await fetch("/api/mistral", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ dados: resumo })
-  });
-
-  const data = await response.json();
-  document.getElementById("insightsIA").innerText = data.insights || "Erro ao gerar insights.";
-}
 </script>
+
 </body>
 </html>
