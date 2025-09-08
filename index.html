@@ -120,11 +120,12 @@
         body: JSON.stringify({ dados: dadosParaIA })
       });
 
+      // Lê a resposta como texto
+      const text = await resposta.text();
       let json;
       try {
-        json = await resposta.json();
+        json = JSON.parse(text); // tenta converter para JSON
       } catch {
-        const text = await resposta.text();
         resultadoDiv.textContent = `Erro ao conectar com a API: Resposta inválida - ${text}`;
         resultadoDiv.className = "error";
         return;
