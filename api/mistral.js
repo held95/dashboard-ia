@@ -5,20 +5,24 @@ export default async function handler(req, res) {
 
   const { dados } = req.body;
 
+  if (!process.env.MISTRAL_API_KEY) {
+    return res.status(500).json({ error: "Chave da Mistral não encontrada" });
+  }
+
   try {
     const resposta = await fetch("https://api.mistral.ai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.MISTRAL_API_KEY}`
+        "Authorization": `Bearer ${process.env.MISTRAL_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "mistral-small-latest",
+        model: "mistral-small", // use o nome exato suportado
         messages: [
           { role: "system", content: "Você é um analista de dados que gera conclusões objetivas e úteis." },
           { role: "user", content: `Analise os seguintes dados: ${dados}` }
-        ]
-      })
+        ],
+      }),
     });
 
     if (!resposta.ok) {
