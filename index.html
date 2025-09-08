@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard IA - Mistral</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
+    /* Reset básico */
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -14,18 +14,41 @@
       padding: 40px;
       display: flex;
       justify-content: center;
+      align-items: flex-start;
     }
+
     .container {
       background: #fff;
       padding: 30px;
       border-radius: 12px;
-      max-width: 900px;
+      max-width: 800px;
       width: 100%;
       box-shadow: 0 10px 30px rgba(0,0,0,0.1);
     }
-    h1 { text-align: center; color: #1a1a1a; margin-bottom: 20px; }
-    #usuarios { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 20px; }
-    #usuarios label { display: flex; align-items: center; gap: 5px; cursor: pointer; font-weight: bold; }
+
+    h1 {
+      color: #1a1a1a;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    textarea {
+      width: 100%;
+      height: 160px;
+      padding: 15px;
+      font-size: 16px;
+      border-radius: 10px;
+      border: 1px solid #ccd6e0;
+      resize: vertical;
+      margin-bottom: 20px;
+      transition: border 0.2s;
+    }
+
+    textarea:focus {
+      border-color: #0070f3;
+      outline: none;
+    }
+
     button {
       width: 100%;
       padding: 15px;
@@ -36,11 +59,15 @@
       border-radius: 10px;
       cursor: pointer;
       transition: background-color 0.3s, transform 0.2s;
-      margin-bottom: 20px;
     }
-    button:hover { background-color: #0055c7; transform: translateY(-2px); }
+
+    button:hover {
+      background-color: #0055c7;
+      transform: translateY(-2px);
+    }
+
     #resultado {
-      margin-top: 20px;
+      margin-top: 25px;
       padding: 20px;
       min-height: 80px;
       background-color: #f1f5f9;
@@ -50,86 +77,88 @@
       white-space: pre-wrap;
       transition: background-color 0.3s;
     }
-    .loading { display: flex; align-items: center; justify-content: center; gap: 10px; color: #0070f3; font-weight: bold; }
-    .dot { width: 8px; height: 8px; background-color: #0070f3; border-radius: 50%; animation: blink 1.4s infinite both; }
+
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: #0070f3;
+      font-weight: bold;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      background-color: #0070f3;
+      border-radius: 50%;
+      animation: blink 1.4s infinite both;
+    }
+
     .dot:nth-child(1) { animation-delay: 0s; }
     .dot:nth-child(2) { animation-delay: 0.2s; }
     .dot:nth-child(3) { animation-delay: 0.4s; }
-    @keyframes blink { 0%,80%,100% { opacity:0; } 40% { opacity:1; } }
-    .error { color: #c53030; border-left-color: #c53030; background-color: #fee2e2; }
-    .success { border-left-color: #2f855a; background-color: #e6fffa; color: #2f855a; }
-    canvas { margin-top: 30px; }
+
+    @keyframes blink {
+      0%, 80%, 100% { opacity: 0; }
+      40% { opacity: 1; }
+    }
+
+    .error {
+      color: #c53030;
+      border-left-color: #c53030;
+      background-color: #fee2e2;
+    }
+
+    .success {
+      border-left-color: #2f855a;
+      background-color: #e6fffa;
+      color: #2f855a;
+    }
+
   </style>
 </head>
 <body>
+
 <div class="container">
   <h1>Dashboard IA - Mistral</h1>
-  <div id="usuarios"></div>
+  <textarea id="dados" placeholder="Cole ou digite os dados aqui..."></textarea>
   <button id="gerar">Gerar Insight</button>
   <div id="resultado"></div>
-  <canvas id="grafico"></canvas>
 </div>
 
 <script>
-  // JSON de usuários
-  const dadosUsuarios = [
-    { usuario: "A", quantidade_de_pacientes: 25, data: "25/08/25", hora: "14h54", data_do_registro: "22/08/25", tipo_de_procedimento: "Cirurgia" },
-    { usuario: "B", quantidade_de_pacientes: 4, data: "25/08/25", hora: "10h30", data_do_registro: "22/08/25", tipo_de_procedimento: "Consulta" },
-    { usuario: "C", quantidade_de_pacientes: 12, data: "25/08/25", hora: "11h15", data_do_registro: "22/08/25", tipo_de_procedimento: "Exame" }
-  ];
-
-  const usuariosDiv = document.getElementById("usuarios");
   const btn = document.getElementById("gerar");
   const resultadoDiv = document.getElementById("resultado");
-
-  // Cria checkboxes
-  dadosUsuarios.forEach((user, index) => {
-    const label = document.createElement("label");
-    label.innerHTML = `<input type="checkbox" value="${index}" checked> ${user.usuario}`;
-    usuariosDiv.appendChild(label);
-  });
-
-  // Inicializa gráfico
-  const ctx = document.getElementById('grafico').getContext('2d');
-  let grafico = new Chart(ctx, {
-    type: 'bar',
-    data: { labels: [], datasets: [{ label: 'Quantidade de Pacientes', data: [], backgroundColor: '#0070f3' }] },
-    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-  });
+  const textarea = document.getElementById("dados");
 
   btn.addEventListener("click", async () => {
-    const selecionados = Array.from(usuariosDiv.querySelectorAll("input:checked"))
-      .map(input => dadosUsuarios[input.value]);
-
-    if (selecionados.length === 0) {
-      resultadoDiv.textContent = "Selecione pelo menos um usuário.";
+    const dados = textarea.value.trim();
+    if (!dados) {
+      resultadoDiv.textContent = "Por favor, insira algum dado para analisar.";
       resultadoDiv.className = "error";
       return;
     }
 
-    const dadosParaIA = JSON.stringify(selecionados, null, 2);
-
-    // Loading animado
-    resultadoDiv.innerHTML = `<div class="loading">Gerando insight <span class="dot"></span><span class="dot"></span><span class="dot"></span></div>`;
+    // Mostra loading animado
+    resultadoDiv.innerHTML = `
+      <div class="loading">
+        Gerando insight
+        <span class="dot"></span>
+        <span class="dot"></span>
+        <span class="dot"></span>
+      </div>
+    `;
     resultadoDiv.className = "";
 
     try {
       const resposta = await fetch("/api/gerar-insight", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dados: dadosParaIA })
+        body: JSON.stringify({ dados })
       });
 
-      // Lê a resposta como texto
-      const text = await resposta.text();
-      let json;
-      try {
-        json = JSON.parse(text); // tenta converter para JSON
-      } catch {
-        resultadoDiv.textContent = `Erro ao conectar com a API: Resposta inválida - ${text}`;
-        resultadoDiv.className = "error";
-        return;
-      }
+      const json = await resposta.json();
 
       if (resposta.ok) {
         resultadoDiv.textContent = json.insights;
@@ -139,16 +168,12 @@
         resultadoDiv.className = "error";
       }
 
-      // Atualiza gráfico
-      grafico.data.labels = selecionados.map(u => u.usuario);
-      grafico.data.datasets[0].data = selecionados.map(u => u.quantidade_de_pacientes);
-      grafico.update();
-
     } catch (err) {
       resultadoDiv.textContent = `Erro ao conectar com a API: ${err.message}`;
       resultadoDiv.className = "error";
     }
   });
 </script>
+
 </body>
 </html>
