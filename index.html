@@ -1,179 +1,217 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dashboard Logs - IA Completo</title>
-<style>
-body { font-family: Arial, sans-serif; background:#f5f5f5; padding:20px; }
-h1 { text-align:center; color:#333; margin-bottom:20px; }
-input, button { padding:10px; margin:5px 0; }
-button { background:#0070f3; color:#fff; border:none; border-radius:5px; cursor:pointer; }
-button:hover { background:#0055c7; }
-table { width:100%; border-collapse:collapse; margin-top:20px; }
-th, td { border:1px solid #ccc; padding:8px; text-align:left; }
-th { background:#0070f3; color:#fff; }
-#preview, #graficos, #resultado { margin-top:20px; background:#fff; padding:10px; border-radius:5px; }
-canvas { max-width:100%; height:auto; margin-top:20px; }
-</style>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard IA - Mistral</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(to right, #f0f4f8, #d9e2ec);
+      min-height: 100vh;
+      padding: 40px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .container {
+      background: #fff;
+      padding: 30px;
+      border-radius: 12px;
+      max-width: 900px;
+      width: 100%;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+
+    h1 { text-align: center; color: #1a1a1a; margin-bottom: 20px; }
+
+    textarea {
+      width: 100%;
+      height: 120px;
+      padding: 15px;
+      font-size: 16px;
+      border-radius: 10px;
+      border: 1px solid #ccd6e0;
+      resize: vertical;
+      margin-bottom: 20px;
+      transition: border 0.2s;
+    }
+
+    textarea:focus { border-color: #0070f3; outline: none; }
+
+    button {
+      width: 100%;
+      padding: 15px;
+      font-size: 18px;
+      background-color: #0070f3;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background-color 0.3s, transform 0.2s;
+      margin-bottom: 20px;
+    }
+
+    button:hover { background-color: #0055c7; transform: translateY(-2px); }
+
+    #usuarios {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    #usuarios label {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    #resultado {
+      margin-top: 20px;
+      padding: 20px;
+      min-height: 80px;
+      background-color: #f1f5f9;
+      border-radius: 10px;
+      border-left: 5px solid #0070f3;
+      font-size: 16px;
+      white-space: pre-wrap;
+      transition: background-color 0.3s;
+    }
+
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: #0070f3;
+      font-weight: bold;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      background-color: #0070f3;
+      border-radius: 50%;
+      animation: blink 1.4s infinite both;
+    }
+
+    .dot:nth-child(1) { animation-delay: 0s; }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes blink {
+      0%, 80%, 100% { opacity: 0; }
+      40% { opacity: 1; }
+    }
+
+    .error {
+      color: #c53030;
+      border-left-color: #c53030;
+      background-color: #fee2e2;
+    }
+
+    .success {
+      border-left-color: #2f855a;
+      background-color: #e6fffa;
+      color: #2f855a;
+    }
+
+    canvas { margin-top: 30px; }
+  </style>
 </head>
 <body>
+<div class="container">
+  <h1>Dashboard IA - Mistral</h1>
 
-<h1>Dashboard Logs - IA Completo</h1>
+  <!-- JSON de usuários -->
+  <div id="usuarios"></div>
 
-<input type="file" id="fileInput" accept=".txt">
-<button id="processar">Processar Log</button>
+  <!-- Botão de gerar insight -->
+  <button id="gerar">Gerar Insight</button>
 
-<div id="preview"></div>
-<div id="graficos"></div>
-<div id="resultado"></div>
+  <!-- Resultado da IA -->
+  <div id="resultado"></div>
+
+  <!-- Gráfico -->
+  <canvas id="grafico"></canvas>
+</div>
 
 <script>
-const fileInput = document.getElementById("fileInput");
-const processarBtn = document.getElementById("processar");
-const previewDiv = document.getElementById("preview");
-const graficosDiv = document.getElementById("graficos");
-const resultadoDiv = document.getElementById("resultado");
+  // JSON de usuários
+  const dadosUsuarios = [
+    { usuario: "A", quantidade_de_pacientes: 25, data: "25/08/25", hora: "14h54", data_do_registro: "22/08/25", tipo_de_procedimento: "Cirurgia" },
+    { usuario: "B", quantidade_de_pacientes: 4, data: "25/08/25", hora: "10h30", data_do_registro: "22/08/25", tipo_de_procedimento: "Consulta" },
+    { usuario: "C", quantidade_de_pacientes: 12, data: "25/08/25", hora: "11h15", data_do_registro: "22/08/25", tipo_de_procedimento: "Exame" }
+  ];
 
-let jsonData = [];
+  const usuariosDiv = document.getElementById("usuarios");
+  const btn = document.getElementById("gerar");
+  const resultadoDiv = document.getElementById("resultado");
 
-// Função para parse do log TXT para JSON
-function parseLogToJSON(logText) {
-  const lines = logText.split(/\r?\n/).filter(l=>l.trim()!=="");
-  const dataArray = [];
-
-  for (let i = 0; i < lines.length; i+=2) {
-    const linhaData = lines[i];
-    const mensagem = lines[i+1] || "";
-
-    const [dataRaw, horaRaw] = linhaData.split(", ");
-    let data = dataRaw || "";
-    let hora = horaRaw || "";
-
-    let qtdPacientesMatch = mensagem.match(/atendeu a (\d+)/);
-    let qtdPacientes = qtdPacientesMatch ? parseInt(qtdPacientesMatch[1]) : "";
-
-    let dataRegistroMatch = mensagem.match(/no dia (\d{2}\/\d{2}\/\d{2,4})/);
-    let dataRegistro = dataRegistroMatch ? dataRegistroMatch[1] : "";
-
-    let tipoProcedimento = "";
-    if(mensagem.toLowerCase().includes("cirurgia")) tipoProcedimento = "Cirurgias";
-    else if(mensagem.toLowerCase().includes("visitas")) tipoProcedimento = "Visitas";
-    else if(mensagem.toLowerCase().includes("ambulatorial")) tipoProcedimento = "Ambulatório";
-
-    let status = mensagem.toLowerCase().includes("registro concluído") ? "Concluído" : "";
-
-    let confirmacao = (mensagem.trim()==="Sim" || mensagem.trim()==="Não") ? mensagem.trim() : "";
-
-    dataArray.push({
-      Data: data,
-      Hora: hora,
-      Mensagem: mensagem,
-      Usuario: "Sistema",
-      TipoMensagem: "",
-      Assunto: "",
-      QuantidadePacientes: qtdPacientes,
-      DataRegistro: dataRegistro,
-      TipoProcedimento: tipoProcedimento,
-      StatusAcao: status,
-      Confirmacao: confirmacao
-    });
-  }
-
-  return dataArray;
-}
-
-// Função para criar tabela preview
-function gerarTabelaPreview(jsonData) {
-  let html = "<table><tr><th>Data</th><th>Hora</th><th>Mensagem</th><th>Qtd Pacientes</th><th>Data Registro</th></tr>";
-  jsonData.slice(0,5).forEach(row=>{
-    html += `<tr>
-      <td>${row.Data}</td>
-      <td>${row.Hora}</td>
-      <td>${row.Mensagem}</td>
-      <td>${row.QuantidadePacientes}</td>
-      <td>${row.DataRegistro}</td>
-    </tr>`;
-  });
-  html += "</table>";
-  previewDiv.innerHTML = html;
-}
-
-// Função para gerar gráficos
-function gerarGraficos(jsonData) {
-  graficosDiv.innerHTML = "<h2>Gráficos</h2>";
-
-  // Treemap: Qtd de pacientes por DataRegistro
-  const datas = [...new Set(jsonData.map(d => d.DataRegistro).filter(d=>d))];
-  const somaPacientes = datas.map(d=>{
-    return jsonData.filter(j=>j.DataRegistro===d).reduce((acc,v)=>acc+(v.QuantidadePacientes||0),0);
+  // Inicializa checkboxes para cada usuário
+  dadosUsuarios.forEach((user, index) => {
+    const label = document.createElement("label");
+    label.innerHTML = `<input type="checkbox" value="${index}" checked> ${user.usuario}`;
+    usuariosDiv.appendChild(label);
   });
 
-  graficosDiv.innerHTML += '<canvas id="treemapChart"></canvas>';
-  new Chart(document.getElementById('treemapChart'), {
+  // Inicializa gráfico
+  const ctx = document.getElementById('grafico').getContext('2d');
+  let grafico = new Chart(ctx, {
     type: 'bar',
-    data: { labels: datas, datasets:[{label:'Pacientes por Data', data:somaPacientes, backgroundColor:'#0070f3'}]},
-    options: { responsive:true }
+    data: { labels: [], datasets: [{ label: 'Quantidade de Pacientes', data: [], backgroundColor: '#0070f3' }] },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
   });
 
-  // Random Map: quantidade de pacientes por tipo de procedimento
-  const tipos = [...new Set(jsonData.map(d=>d.TipoProcedimento).filter(t=>t))];
-  const somaPorTipo = tipos.map(t=>jsonData.filter(j=>j.TipoProcedimento===t).reduce((acc,v)=>acc+(v.QuantidadePacientes||0),0));
+  btn.addEventListener("click", async () => {
+    // Filtra usuários selecionados
+    const selecionados = Array.from(usuariosDiv.querySelectorAll("input:checked"))
+      .map(input => dadosUsuarios[input.value]);
 
-  graficosDiv.innerHTML += '<canvas id="randomMapChart"></canvas>';
-  new Chart(document.getElementById('randomMapChart'), {
-    type:'pie',
-    data:{labels:tipos,datasets:[{data:somaPorTipo, backgroundColor:['#0070f3','#00c775','#f3c700']}]},
-    options:{ responsive:true }
+    if (selecionados.length === 0) {
+      resultadoDiv.textContent = "Selecione pelo menos um usuário.";
+      resultadoDiv.className = "error";
+      return;
+    }
+
+    const dadosParaIA = JSON.stringify(selecionados, null, 2);
+
+    // Loading
+    resultadoDiv.innerHTML = `<div class="loading">Gerando insight <span class="dot"></span><span class="dot"></span><span class="dot"></span></div>`;
+    resultadoDiv.className = "";
+
+    try {
+      const resposta = await fetch("/api/gerar-insight", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dados: dadosParaIA })
+      });
+
+      const json = await resposta.json();
+
+      if (resposta.ok) {
+        resultadoDiv.textContent = json.insights;
+        resultadoDiv.className = "success";
+      } else {
+        resultadoDiv.textContent = `Erro: ${json.error || "Erro desconhecido"}`;
+        resultadoDiv.className = "error";
+      }
+
+      // Atualiza gráfico automaticamente
+      grafico.data.labels = selecionados.map(u => u.usuario);
+      grafico.data.datasets[0].data = selecionados.map(u => u.quantidade_de_pacientes);
+      grafico.update();
+
+    } catch (err) {
+      resultadoDiv.textContent = `Erro ao conectar com a API: ${err.message}`;
+      resultadoDiv.className = "error";
+    }
   });
-
-  // Código de Barras: quantidade por usuário
-  const usuarios = [...new Set(jsonData.map(d=>d.Usuario).filter(u=>u))];
-  const somaPorUsuario = usuarios.map(u=>jsonData.filter(j=>j.Usuario===u).reduce((acc,v)=>acc+(v.QuantidadePacientes||0),0));
-
-  graficosDiv.innerHTML += '<canvas id="barraChart"></canvas>';
-  new Chart(document.getElementById('barraChart'), {
-    type:'bar',
-    data:{ labels:usuarios, datasets:[{label:'Pacientes por Usuário', data:somaPorUsuario, backgroundColor:'#f35c00'}]},
-    options:{ responsive:true }
-  });
-
-  // Linear Regression Placeholder: média de pacientes por dia
-  const mediaPacientes = somaPacientes.length ? (somaPacientes.reduce((a,b)=>a+b,0)/somaPacientes.length).toFixed(2) : 0;
-  graficosDiv.innerHTML += `<p>Média de pacientes por dia (Linear Regression estimativa): ${mediaPacientes}</p>`;
-}
-
-// Função para enviar JSON para Mistral IA
-async function enviarParaIA(jsonData) {
-  try {
-    const resposta = await fetch("/api/gerar-insight", {
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ dados: JSON.stringify(jsonData) })
-    });
-    const json = await resposta.json();
-    resultadoDiv.innerHTML = `<h2>Insights da IA</h2><p>${json.insights}</p>`;
-  } catch(err) {
-    resultadoDiv.textContent = "Erro ao enviar para IA: "+err.message;
-  }
-}
-
-// Botão processar
-processarBtn.addEventListener("click", () => {
-  const file = fileInput.files[0];
-  if(!file){ alert("Selecione um arquivo TXT"); return; }
-  const reader = new FileReader();
-  reader.onload = (e)=>{
-    const text = e.target.result;
-    jsonData = parseLogToJSON(text);
-    gerarTabelaPreview(jsonData);
-    gerarGraficos(jsonData);
-    enviarParaIA(jsonData);
-  };
-  reader.readAsText(file);
-});
 </script>
-
 </body>
 </html>
