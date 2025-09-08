@@ -8,7 +8,7 @@ export default async function handler(req, res) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.MISTRAL_API_KEY}`
+        "Authorization": `Bearer ${process.env.upXlQHpbNFBQYEjP28LS4k1agHacNuez}`
       },
       body: JSON.stringify({
         model: "mistral-small-latest",
